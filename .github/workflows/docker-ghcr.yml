@@ -1,25 +1,10 @@
 name: docker-ghcr
 
-# 多架构镜像（amd64/arm64）自动构建并发布到 ghcr.io：
-#   - push 到 main / 打 v* tag / 手动触发 → 构建并推送
-#   - PR 触碰构建相关文件 → 仅构建验证，不推送
+# 多架构镜像（amd64/arm64）构建并发布到 ghcr.io（fork 策略：仅手动触发，
+# push/PR/tag 都不自动构建）：
+#   - 手动触发（workflow_dispatch，默认 main）→ 构建并推送镜像
 # tag 说明：main 推 latest + main + sha-xxxxxx；v1.2.3 推 1.2.3 / 1.2 / 1
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
-  pull_request:
-    paths:
-      - "Dockerfile"
-      - ".dockerignore"
-      - "go.mod"
-      - "go.sum"
-      - "cmd/**"
-      - "internal/**"
-      - "scripts/**"
-      - "*.sh"
-      - "config.example.json"
-      - ".github/workflows/docker-ghcr.yml"
   workflow_dispatch:
 
 # 并发组：PR 取消过时构建；main/tag 按引用串行——发版时 main+tag 同推不再双跑
