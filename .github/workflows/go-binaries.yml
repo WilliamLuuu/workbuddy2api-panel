@@ -132,6 +132,8 @@ jobs:
           MANUAL_NOTES: ${{ inputs.notes }}
         run: |
           PREV="${{ steps.prev.outputs.prev }}"
+          # 资产名里的版本取自源码 appVersion（与 build 阶段一致；-ci 演练 tag 也能对上）。
+          ASSET_V="v$(grep -oP 'appVersion = "\K[^"]+' cmd/server/main.go | sed 's/-panel$//')"
           if [ -n "$MANUAL_NOTES" ]; then
             # 手动传入的 Markdown 原样使用（workflow_dispatch 的 notes 输入）。
             printf '%s\n' "$MANUAL_NOTES" > NOTES.md
@@ -141,7 +143,12 @@ jobs:
               echo "## 更新内容"
               echo
               if [ -n "$PREV" ]; then
-                git log --merges --pretty=format:'- %s' "$PREV..$GITHUB_REF_NAME" | sed '/^[[:space:]]*$/d'
+                MERGES=$(git log --merges --pretty=format:'- %s' "$PREV..$GITHUB_REF_NAME" | sed '/^[[:space:]]*$/d' || true)
+                if [ -n "$MERGES" ]; then
+                  printf '%s\n' "$MERGES"
+                else
+                  echo "- 无合并提交（可在 Release 页面编辑补充）"
+                fi
                 echo
                 echo
                 echo "> 由合并提交自动生成；详细说明可在 Release 页面编辑补充。"
@@ -151,9 +158,9 @@ jobs:
               echo
               echo "## 发布资产"
               echo
-              echo "- \`wb2api-panel-${GITHUB_REF_NAME}-windows-amd64.zip\`"
-              echo "- \`wb2api-panel-${GITHUB_REF_NAME}-linux-amd64.tar.gz\` / \`-linux-arm64.tar.gz\`"
-              echo "- \`wb2api-panel-${GITHUB_REF_NAME}-darwin-amd64.tar.gz\` / \`-darwin-arm64.tar.gz\`"
+              echo "- \`wb2api-panel-${ASSET_V}-windows-amd64.zip\`"
+              echo "- \`wb2api-panel-${ASSET_V}-linux-amd64.tar.gz\` / \`-linux-arm64.tar.gz\`"
+              echo "- \`wb2api-panel-${ASSET_V}-darwin-amd64.tar.gz\` / \`-darwin-arm64.tar.gz\`"
               echo "- \`checksums.txt\`（SHA-256）"
             } > NOTES.md
           fi
