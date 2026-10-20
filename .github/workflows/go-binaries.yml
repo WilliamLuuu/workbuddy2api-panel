@@ -7,6 +7,11 @@ name: go-binaries
 # appVersion、tag 版本 == 源码版本（-ci 后缀的测试 tag 豁免，用于演练发布线）。
 on:
   workflow_dispatch:
+    inputs:
+      notes:
+        description: "Release 更新日志（Markdown，可多行；留空则按合并提交自动生成）"
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -87,7 +92,7 @@ jobs:
           path: ${{ env.name }}
           retention-days: 7
 
-  # 仅 tag 触发：校验 tag == 源码版本（-ci 演练 tag 豁免）→ 汇总资产 → 建 Release
+  # 手动触发且 ref 为 v* tag：校验 tag == 源码版本（-ci 演练 tag 豁免）→ 汇总资产 → 建 Release
   publish:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -122,12 +127,45 @@ jobs:
         run: |
           PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
           echo "prev=${PREV}" >> "$GITHUB_OUTPUT"
+      - name: 组装 Release 更新日志
+        env:
+          MANUAL_NOTES: ${{ inputs.notes }}
+        run: |
+          PREV="${{ steps.prev.outputs.prev }}"
+          if [ -n "$MANUAL_NOTES" ]; then
+            # 手动传入的 Markdown 原样使用（workflow_dispatch 的 notes 输入）。
+            printf '%s\n' "$MANUAL_NOTES" > NOTES.md
+          else
+            # 未传 notes：按上一版 tag 以来的合并提交生成基础更新日志。
+            {
+              echo "## 更新内容"
+              echo
+              if [ -n "$PREV" ]; then
+                git log --merges --pretty=format:'- %s' "$PREV..$GITHUB_REF_NAME" | sed '/^[[:space:]]*$/d'
+                echo
+                echo
+                echo "> 由合并提交自动生成；详细说明可在 Release 页面编辑补充。"
+              else
+                echo "- 首个发布"
+              fi
+              echo
+              echo "## 发布资产"
+              echo
+              echo "- \`wb2api-panel-${GITHUB_REF_NAME}-windows-amd64.zip\`"
+              echo "- \`wb2api-panel-${GITHUB_REF_NAME}-linux-amd64.tar.gz\` / \`-linux-arm64.tar.gz\`"
+              echo "- \`wb2api-panel-${GITHUB_REF_NAME}-darwin-amd64.tar.gz\` / \`-darwin-arm64.tar.gz\`"
+              echo "- \`checksums.txt\`（SHA-256）"
+            } > NOTES.md
+          fi
+          # 统一补 compare 链接（手动 notes 已自带则不重复）。
+          if [ -n "$PREV" ] && ! grep -q '/compare/' NOTES.md; then
+            printf '\n**完整变更**：https://github.com/%s/compare/%s...%s\n' \
+              "${{ github.repository }}" "$PREV" "$GITHUB_REF_NAME" >> NOTES.md
+          fi
+          cat NOTES.md
       - uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}-panel
           prerelease: ${{ contains(github.ref_name, '-') }}
-          body: |
-            CI 自动构建发布（五平台二进制 + checksums）。
-
-            完整变更：https://github.com/${{ github.repository }}/compare/${{ steps.prev.outputs.prev }}...${{ github.ref_name }}
+          body_path: NOTES.md
           files: dist/*
